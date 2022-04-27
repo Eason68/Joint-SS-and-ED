@@ -86,9 +86,9 @@ def stats_f1score_per_class(cm):
 def train(args):
 
     # create the network
-    print("Creating network...")
+    print("Creating network at GPU " + args.gpu_id)
     net = PointMLP()
-    net.cuda()
+    net.cuda(args.gpu_id)
     net = torch.nn.DataParallel(net)
     if args.pretrain:
         net.load_state_dict(torch.load(os.path.join(args.save_dir, "pretrain.pth")))
@@ -247,11 +247,12 @@ def main():
     # parser.add_argument("--drop", default=0, type=float)
     parser.add_argument("--num_classes", default=13, type=int)
     parser.add_argument("--transform", default=False, type=bool)
+    parser.add_argument("--gpu_id", default=0, type=int)
     args = parser.parse_args()
 
 
     train(args)
-    test(args)
+    # test(args)
 
 
 if __name__ == '__main__':

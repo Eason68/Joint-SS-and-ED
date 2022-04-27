@@ -284,14 +284,15 @@ class PointNetFeaturePropagation(nn.Module):
         self.extraction = PosExtraction(out_channel, blocks, groups=groups,
                                         res_expansion=res_expansion, bias=bias, activation=activation)
 
-
-    def forward(self, xyz1, xyz2, points1, points2):
+    # TODO: add pred
+    def forward(self, xyz1, xyz2, points1, points2, last_pred):
         """
         Input:
             xyz1: input points position data, [B, N, 3]
             xyz2: sampled input points position data, [B, S, 3]
             points1: input points data, [B, D', N]
             points2: input points data, [B, D'', S]
+            last_pred: [B, S, 13]
         Return:
             new_points: upsampled points data, [B, D''', N]
         """
@@ -313,12 +314,17 @@ class PointNetFeaturePropagation(nn.Module):
             norm = torch.sum(dist_recip, dim=2, keepdim=True)
             weight = dist_recip / norm
             interpolated_points = torch.sum(index_points(points2, idx) * weight.view(B, N, 3, 1), dim=2)
+            # TODO: upsample pred
+            interpolated_preds = torch.sum(index_points(last_pred, idx) * weight.view(B, N, 3, 1), dim=2)  # [B, N, 13]
 
         if points1 is not None:
             points1 = points1.permute(0, 2, 1)
             new_points = torch.cat([points1, interpolated_points], dim=-1)
         else:
             new_points = interpolated_points
+
+        # TODO: concat
+        new_points =torch.cat((new_points, interpolated_preds), dim=-1)
 
         new_points = new_points.permute(0, 2, 1)
         new_points = self.fuse(new_points)

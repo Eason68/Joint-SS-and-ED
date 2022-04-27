@@ -263,8 +263,6 @@ class S3DISDataset(Dataset):
             # 将读取到的数据存入列表中
             self.room_points.append(points)
             self.room_labels.append(labels)
-            # self.room_coord_min.append(np.min(points[:, :3], axis=0))
-            # self.room_coord_max.append(np.max(points[:, :3], axis=0))
             num_points_all.append(labels.size)
 
         # 每个房间被采样的概率, (1 x len(room_split), )
@@ -298,34 +296,31 @@ class S3DISDataset(Dataset):
             center = points[np.random.choice(N_points)][:3]
             block_min = center - [self.block_size / 2.0, self.block_size / 2.0, self.block_size / 2.0]
             block_max = center + [self.block_size / 2.0, self.block_size / 2.0, self.block_size / 2.0]
-            # point_idxs = np.where((points[:, 0] >= block_min[0]) & (points[:, 0] <= block_max[0]) &
-            #                       (points[:, 1] >= block_min[1]) & (points[:, 1] <= block_max[1]) &
-            #                       (points[:, 2] >= block_min[2]) & (points[:, 2] <= block_max[2]))[0]
             point_idxs = np.where((points[:, :3] >= block_min) & (points[:, :3] <= block_max))[0]
             if point_idxs.size > 1024:
                 break
 
         # 对block_size范围内的点取num_points个点
-        # if point_idxs.size >= self.num_points:
-        #     selected_point_idxs = np.random.choice(point_idxs, self.num_points, replace=False)
-        # else:
-        #     selected_point_idxs = np.random.choice(point_idxs, self.num_points, replace=True)
         selected_point_idxs = np.random.choice(point_idxs, self.num_points, replace=(point_idxs.size < self.num_points))
 
         # 坐标归一化
-        selected_points = points[selected_point_idxs, :]  # num_points * 6
-        # selected_points[:, 0] = selected_points[:, 0] - center[0]
-        # selected_points[:, 1] = selected_points[:, 1] - center[1]
-        # selected_points[:, 2] = selected_points[:, 2] - center[2]
-        selected_points[:, 0:3] = selected_points[:, 0:3] - center
-        selected_points[:, 3:6] /= 255.0
-        selected_labels = labels[selected_point_idxs]
+        points = points[selected_point_idxs, :]  # num_points x 6
+        labels = labels[selected_point_idxs]  # num_points x 1
+        points[:, 0:3] -= center
+        points[:, 3:6] /= 255.0
+
+
+        # 数据增强
+        if self.transform:
+            transform = Compose([RandomScale([0.9, 1.1]), ChromaticAutoContrast(), ChromaticTranslation(),
+                                 ChromaticJitter(), HueSaturationTranslation()])
+            points[:, :3], points[:, 3:6], labels = transform(points[:, :3], points[:, 3:6], labels)
 
         # 转化为tensor
-        selected_points = torch.from_numpy(selected_points).float()
-        selected_labels = torch.from_numpy(selected_labels).long()
+        points = torch.from_numpy(points).float()
+        labels = torch.from_numpy(labels).long()
 
-        return selected_points, selected_labels
+        return points, labels
 
     def __len__(self):
         """
@@ -346,7 +341,7 @@ if __name__ == '__main__':
 
     import torch, time, random
 
-    manual_seed = 123
+    manual_seed = 42
     random.seed(manual_seed)
     np.random.seed(manual_seed)
     torch.manual_seed(manual_seed)
