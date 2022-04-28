@@ -1,24 +1,30 @@
 ## Data
 
-Create a new folder in the current directory and name it `data` , then download `Stanford3dDataset_v1.2_Aligned_Version.zip` from https://goo.gl/forms/4SoGp4KtH1jfRqEj2 and unzip it and place it under `data` , the file structure is as follows:
+Create a new folder in the current directory and name it `data` , then download `Stanford3dDataset_v1.2_Aligned_Version.zip`  [here](https://goo.gl/forms/4SoGp4KtH1jfRqEj2) and unzip it and place it under `data` , the file structure is as follows:
 
-```bash
+```
 root
- │  .gitignore
  │  dataLoader.py
  │  dataPrepare.py
  │  main.py
  │  model.py
  │  README.md
- │  test.py
  │
- ├─data
-     ├─Stanford3dDataset_v1.2_Aligned_Version
+ └─ data
+     └─ Stanford3dDataset_v1.2_Aligned_Version
          ├─Area_1
          │    ├─ ...
          │
          ├─Area_2
          ├─ ...
+```
+
+
+
+In this data set, it should be noted that in the `Area_5/hallway_6/Annotations/ceiling_1.txt` file, there is an `illegal character` **after the number 185 in line 180389**. You need to modify it manually and replace it with a `space`:
+
+```
+line 180389: 22.350 6.692 3.048 185**here**187 182
 ```
 
 
@@ -32,7 +38,23 @@ python dataPrepare.py
 
 
 
-The processed data will be placed in the `./data/s3dis_data` folder
+The processed data will be placed in the `./data/s3dis_data` folder, the file structure is as follows:
+
+```
+root
+ │  dataLoader.py
+ │  dataPrepare.py
+ │  main.py
+ │  model.py
+ │  README.md
+ │
+ └─ data
+     ├─ Stanford3dDataset_v1.2_Aligned_Version
+     └─ s3dis_data
+         ├─ Area_1_conferenceRoom_1.npy
+         ├─ Area_2_hallway_1.npy
+         ├─ ...
+```
 
 
 

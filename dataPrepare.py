@@ -41,11 +41,12 @@ def dataPrepare():
             Objects = [Object for Object in os.listdir(Annotations) if not ".DS_Store" in Object]
             for Object in Objects:
 
-                if Object.split("_", 1)[0] not in Object_dict:
+                if Object.split("_", 1)[0] not in Object_dict:  # there are some "Icon" file, which need to skip
                     continue
+
                 point_Object = np.loadtxt(os.path.join(Annotations, Object))  # (N,6)
                 label_Object = np.tile([Object_dict[Object.split("_", 1)[0]]], (point_Object.shape[0], 1))  # (N,1)
-                point_Room.append(np.concatenate([point_Object, label_Object], axis=1))
+                point_Room.append(np.concatenate([point_Object, label_Object], axis=1))  # N x 7
 
             point_Room = np.concatenate(point_Room, axis=0)
             np.save(file_name, point_Room)

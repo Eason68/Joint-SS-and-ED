@@ -2,9 +2,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import einsum
-from einops import rearrange, repeat
-from torchsummary import summary
 # from pointnet2_ops import pointnet2_utils
 
 def get_activation(activation):
@@ -278,11 +275,19 @@ class PosExtraction(nn.Module):
 
 
 class PointNetFeaturePropagation(nn.Module):
-    def __init__(self, in_channel, out_channel, blocks=1, groups=1, res_expansion=1.0, bias=True, activation='relu'):
+    def __init__(self, in_channel, out_channel, blocks=1, groups=1, res_expansion=1.0, bias=True, activation='relu', mlp=[]):
         super(PointNetFeaturePropagation, self).__init__()
         self.fuse = ConvBNReLU1D(in_channel, out_channel, 1, bias=bias)
         self.extraction = PosExtraction(out_channel, blocks, groups=groups,
                                         res_expansion=res_expansion, bias=bias, activation=activation)
+
+        # TODO: generate prediction
+        self.prediction = nn.ModuleList()
+        for channel in mlp:
+            self.prediction.append(ConvBNReLU1D(out_channel, channel, 1, bias=bias))
+            self.prediction.append(nn.Dropout(0.5))
+            out_channel = channel
+        self.prediction.append(ConvBNReLU1D(out_channel, 13, 1, bias=bias))
 
     # TODO: add pred
     def forward(self, xyz1, xyz2, points1, points2, last_pred):
@@ -323,13 +328,20 @@ class PointNetFeaturePropagation(nn.Module):
         else:
             new_points = interpolated_points
 
-        # TODO: concat
+        # TODO: concat pred branch to main
         new_points =torch.cat((new_points, interpolated_preds), dim=-1)
 
         new_points = new_points.permute(0, 2, 1)
         new_points = self.fuse(new_points)
         new_points = self.extraction(new_points)
-        return new_points
+
+        # TODO: generate the pred
+        pred = new_points
+        for i in range(len(self.prediction)):
+            pred = self.prediction[i](pred)
+
+        # TODO: return the pred
+        return new_points, pred.permute(0, 2, 1)
 
 
 
@@ -379,19 +391,25 @@ class PointMLP(nn.Module):
             en_dims.append(last_channel)
 
 
+        # TODO: build pred5
+        self.prediction = nn.Sequential(ConvBNReLU1D(1024, 256), nn.Dropout(0.5),ConvBNReLU1D(256, 64), nn.Dropout(0.5),
+                                        ConvBNReLU1D(64, 13), nn.LogSoftmax(dim=1))
+
         ### Building Decoder #####
         self.decode_list = nn.ModuleList()
         en_dims.reverse()
         de_dims.insert(0,en_dims[0])
         assert len(en_dims) ==len(de_dims) == len(de_blocks)+1
-        for i in range(len(en_dims)-1):
-            self.decode_list.append(
-                PointNetFeaturePropagation(de_dims[i]+en_dims[i+1], de_dims[i+1],
-                                           blocks=de_blocks[i], groups=groups, res_expansion=res_expansion,
-                                           bias=bias, activation=activation)
-            )
+        # for i in range(len(en_dims)-1):
+        #     self.decode_list.append(
+        #         PointNetFeaturePropagation(de_dims[i] + en_dims[i+1] + num_classes, de_dims[i+1],
+        #                                    blocks=de_blocks[i], groups=groups, res_expansion=res_expansion,
+        #                                    bias=bias, activation=activation))
+        self.fp4 = PointNetFeaturePropagation(de_dims[0] + en_dims[1] + num_classes, de_dims[1], de_blocks[0], mlp=[128, 32])
+        self.fp3 = PointNetFeaturePropagation(de_dims[1] + en_dims[2] + num_classes, de_dims[2], de_blocks[1], mlp=[64])
+        self.fp2 = PointNetFeaturePropagation(de_dims[2] + en_dims[3] + num_classes, de_dims[3], de_blocks[2], mlp=[32])
+        self.fp1 = PointNetFeaturePropagation(de_dims[3] + en_dims[4] + num_classes, de_dims[4], de_blocks[3], mlp=[32])
 
-        self.act = get_activation(activation)
 
         # global max pooling mapping
         self.gmp_map_list = nn.ModuleList()
@@ -428,9 +446,19 @@ class PointMLP(nn.Module):
         # here is the decoder
         xyz_list.reverse()
         x_list.reverse()
-        x = x_list[0]
-        for i in range(len(self.decode_list)):
-            x = self.decode_list[i](xyz_list[i+1], xyz_list[i], x_list[i+1], x)
+        x5 = x_list[0]  # [B, 1024, N/256]
+
+        # for i in range(len(self.decode_list)):
+        #     x = self.decode_list[i](xyz_list[i+1], xyz_list[i], x_list[i+1], x)
+
+        # TODO: decoder
+        pred5 = self.prediction(x5).permute(0, 2, 1) # [B, N/256, 13]
+        x4, pred4 = self.fp4(xyz_list[1], xyz_list[0], x_list[1], x5, pred5)  # [B, 512, N/64], [B, N/64, 13]
+        x3, pred3 = self.fp3(xyz_list[2], xyz_list[1], x_list[2], x4, pred4)  # [B, 256, N/16], [B, N/16, 13]
+        x2, pred2 = self.fp2(xyz_list[3], xyz_list[2], x_list[3], x3, pred3)  # [B, 128, N/4],  [B, N/4, 13]
+        x1, pred1 = self.fp1(xyz_list[4], xyz_list[3], x_list[4], x2, pred2)  # [B, 128, N],    [B, N, 13]
+
+
 
         # here is the global context
         gmp_list = []
@@ -438,28 +466,31 @@ class PointMLP(nn.Module):
             gmp_list.append(F.adaptive_max_pool1d(self.gmp_map_list[i](x_list[i]), 1))
         global_context = self.gmp_map_end(torch.cat(gmp_list, dim=1)) # [b, gmp_dim, 1]
 
-        x = torch.cat([x, global_context.repeat([1, 1, x.shape[-1]])], dim=1)
+        x = torch.cat([x1, global_context.repeat([1, 1, x1.shape[-1]])], dim=1)
         x = self.classifier(x)
         x = F.log_softmax(x, dim=1)
         x = x.permute(0, 2, 1)
-        return x
+        return x, [pred1, pred2, pred3, pred4, pred5], xyz_list.reverse(), [x1, x2, x3, x4, x5]
 
 
-# def pointMLP(num_classes=13, **kwargs) -> PointMLP:
-#     return PointMLP(num_classes=num_classes, points=2048, embed_dim=64, groups=1, res_expansion=1.0,
-#                  activation="relu", bias=True, use_xyz=True, normalize="anchor",
-#                  dim_expansion=[2, 2, 2, 2], pre_blocks=[2, 2, 2, 2], pos_blocks=[2, 2, 2, 2],
-#                  k_neighbors=[32, 32, 32, 32], reducers=[4, 4, 4, 4],
-#                  de_dims=[512, 256, 128, 128], de_blocks=[4,4,4,4],
-#                  gmp_dim=64,cls_dim=64, **kwargs)
+def pointMLP(num_classes=13, **kwargs) -> PointMLP:
+    return PointMLP(num_classes=num_classes, points=2048, embed_dim=64, groups=1, res_expansion=1.0,
+                 activation="relu", bias=True, use_xyz=True, normalize="anchor",
+                 dim_expansion=[2, 2, 2, 2], pre_blocks=[2, 2, 2, 2], pos_blocks=[2, 2, 2, 2],
+                 k_neighbors=[32, 32, 32, 32], reducers=[4, 4, 4, 4],
+                 de_dims=[512, 256, 128, 128], de_blocks=[4,4,4,4],
+                 gmp_dim=64,cls_dim=64, **kwargs)
 
 
 if __name__ == '__main__':
     data = torch.rand(2, 6, 2048)
     print("testing model ...")
-    # model = pointMLP()
-    # out = model(data)  # [2,2048,13]
-    # print(out.shape)
+    model = pointMLP()
+    out, preds = model(data)  # [2,2048,13]
+    print(out.shape)
+    for pred in preds:
+        print(pred.shape)
+    print()
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # PyTorch v0.4.0
     # model = PointMLP().to(device)
     #
