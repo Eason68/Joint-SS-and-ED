@@ -1,4 +1,5 @@
 from model import PointMLP
+from loss import Loss
 from dataLoader import S3DISDataset
 import torch
 import os
@@ -93,6 +94,9 @@ def train(args):
     if args.pretrain:
         net.load_state_dict(torch.load(os.path.join(args.save_dir, "pretrain.pth")))
 
+    criterion = Loss()
+    criterion.cuda(args.gpu_id)
+
     # print("parameters", count_parameters(net))
 
     print("Creating dataloader and optimizer...")
@@ -141,14 +145,15 @@ def train(args):
 
             optimizer.zero_grad()
 
-            outputs = net(points)
+            output, coords, feats, preds, indexs = net(points)
 
-            loss = F.cross_entropy(outputs.contiguous().view(-1, args.num_classes), labels.contiguous().view(-1))
+            # loss = F.cross_entropy(outputs.contiguous().view(-1, args.num_classes), labels.contiguous().view(-1))
+            loss = criterion(labels, indexs, output, preds, coords, feats)
             loss.backward()
             optimizer.step()
             scheduler.step()
 
-            output_np = np.argmax(outputs.cpu().detach().numpy(), axis=2).copy()
+            output_np = np.argmax(output.cpu().detach().numpy(), axis=2).copy()
             target_np = labels.cpu().numpy().copy()
 
             cm_ = confusion_matrix(target_np.ravel(), output_np.ravel(), labels=list(range(args.num_classes)))

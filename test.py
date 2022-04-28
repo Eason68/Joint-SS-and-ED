@@ -1,6 +1,8 @@
 import numpy as np
+import torch
 
 if __name__ == '__main__':
-    a = np.arange(9).reshape(3,3)
-    b = np.array([2,3,4])
-    print(np.where(a>b)[0].size)
+    a = torch.tensor(.0)
+    # b = (a > 3) & (a < 6)
+    # b = torch.stack(a)
+    print(a)
