@@ -4,16 +4,15 @@ Create a new folder in the current directory and name it `data` , then download 
 
 ```
 root
- │  dataLoader.py
- │  dataPrepare.py
- │  main.py
- │  model.py
- │  README.md
- │
+ ├─ data.py
+ ├─ main.py
+ ├─ model.py
+ ├─ loss.py
+ ├─ README.md
  └─ data
      └─ indoor3d_sem_seg_hdf5_data
          ├─ all_files.txt
-         ├─ ply_data_all_i.h5
+         ├─ ply_data_all_i.h5 (i = 0, 1, ... , 23)
          └─ room_filelist.txt
 ```
 
