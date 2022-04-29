@@ -9,8 +9,8 @@ class Loss(nn.Module):
         初始化
         """
         super(Loss, self).__init__()
-        self.nsamples = torch.tensor([36, 24, 24, 24, 24]).cuda()
-        self.nstrides = torch.tensor([1, 4, 4, 4, 4]).cuda()
+        self.nsamples = torch.tensor([36, 24, 24, 24, 24])
+        self.nstrides = torch.tensor([1, 4, 4, 4, 4])
         self.temperature = 1
 
     def stats_boundary_loss(self, coords, labels, feats, num_classes):
@@ -21,7 +21,7 @@ class Loss(nn.Module):
         :param feats: 5个stage中点的特征
         :return: loss
         """
-        loss = torch.tensor(.0).cuda()
+        loss = torch.tensor(.0)
         labels = F.one_hot(labels, num_classes)  # [B, N, 13]
         for i, (coord, feat) in enumerate(zip(coords, feats)):
 

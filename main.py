@@ -8,7 +8,6 @@ from tqdm import tqdm
 import numpy as np
 from sklearn.metrics import confusion_matrix
 from metrics import Metrics
-import torch.nn.functional as F
 import argparse
 
 
@@ -25,20 +24,17 @@ def train(args):
     criterion = Loss()
     criterion.cuda(args.gpu_id)
 
-    # print("parameters", count_parameters(net))
-
-    print("Creating dataloader and optimizer...")
+    print("Loading dataset...")
     train = S3DISDataset(split="train", data_path=args.data_path, test_area=args.test_area, num_points=args.num_points, transform=args.transform)
     train_loader = torch.utils.data.DataLoader(train, batch_size=args.batch_size, shuffle=True, num_workers=args.threads)
 
     test = S3DISDataset(split="test", data_path=args.data_path, test_area=args.test_area, num_points=args.num_points, transform=args.transform)
     test_loader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=False, num_workers=args.threads)
 
+    print("Creating optimizer and scheduler...")
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.8)
-    print("done")
 
-    # create the root folder
     print("Creating results folder")
     time_string = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     root_folder = os.path.join(args.save_dir, "{}_area{}_{}_{}".format(args.model, args.test_area, args.num_points, time_string))
@@ -66,14 +62,13 @@ def train(args):
         for points, labels in t:
 
             points = points.permute(0, 2, 1)
-            points = points.cuda()
-            labels = labels.cuda()
+            points = points.cuda(args.gpu_id)
+            labels = labels.cuda(args.gpu_id)
 
             optimizer.zero_grad()
 
             output, coords, feats, preds, indexs = net(points)
 
-            # loss = F.cross_entropy(outputs.contiguous().view(-1, args.num_classes), labels.contiguous().view(-1))
             loss = criterion(labels, indexs, output, preds, coords, feats)
             loss.backward()
             optimizer.step()
@@ -104,13 +99,13 @@ def train(args):
             for points, labels in t:
 
                 points = points.permute(0, 2, 1)
-                points = points.cuda()
-                labels = labels.cuda()
+                points = points.cuda(args.gpu_id)
+                labels = labels.cuda(args.gpu_id)
 
-                outputs = net(points)
-                loss = F.cross_entropy(outputs.contiguous().view(-1, args.num_classes), labels.contiguous().view(-1))
+                output, coords, feats, preds, indexs = net(points)
+                loss = criterion(labels, indexs, output, preds, coords, feats)
 
-                output_np = np.argmax(outputs.cpu().detach().numpy(), axis=2).copy()
+                output_np = np.argmax(output.cpu().detach().numpy(), axis=2).copy()
                 target_np = labels.cpu().numpy().copy()
 
                 cm_ = confusion_matrix(target_np.ravel(), output_np.ravel(), labels=list(range(args.num_classes)))
@@ -142,11 +137,11 @@ def test(args):
     # create the network
     print("Creating network...")
     net = PointMLP()
-    net.cuda()
+    net.cuda(args.gpu_id)
     net = torch.nn.DataParallel(net)
 
     net.load_state_dict(torch.load(os.path.join(args.save_dir, "state_dict.pth")))
-    # net.cuda()
+    # net.cuda(args.gpu_id)
     net.eval()
 
     # TODO: test the model

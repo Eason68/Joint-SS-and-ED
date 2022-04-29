@@ -2,16 +2,19 @@ import numpy as np
 import torch
 from model import knn_point, index_points
 
+
 class Metrics():
     def __init__(self):
         pass
 
+    @classmethod
     def stats_overall_accuracy(self, cm):
         """
         Compute the overall accuracy.
         """
         return np.trace(cm) / cm.sum()
 
+    @classmethod
     def stats_pfa_per_class(self, cm):
         """
         Compute the probability of false alarms.
@@ -24,6 +27,7 @@ class Metrics():
         average_pfa = pfa_per_class[mask].mean()
         return average_pfa, pfa_per_class
 
+    @classmethod
     def stats_accuracy_per_class(self, cm):
         """
         Compute the accuracy per class and average
@@ -40,6 +44,7 @@ class Metrics():
         average_accuracy = accuracy_per_class[mask].mean()
         return average_accuracy, accuracy_per_class
 
+    @classmethod
     def stats_iou_per_class(self, cm, ignore_missing_classes=True):
         """
         Compute the iou per class and average iou
@@ -60,6 +65,7 @@ class Metrics():
 
         return average_iou, iou_per_class
 
+    @classmethod
     def stats_f1score_per_class(self, cm):
         """
         Compute f1 scores per class and mean f1.
@@ -75,6 +81,7 @@ class Metrics():
         average_f1_score = f1score_per_class[mask].mean()
         return average_f1_score, f1score_per_class
 
+    @classmethod
     def stats_boundary_iou(self, coords, labels, output):
         """
         计算边界IoU

@@ -8,6 +8,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 import random
+from tqdm import tqdm
+
 
 class Compose(object):
     def __init__(self, transforms):
@@ -212,6 +214,7 @@ class RandomDropColor(object):
             # feat[:, :3] = 127.5
         return coord, feat, label
 
+
 class S3DISDataset(Dataset):
     def __init__(self, split="train", data_path="data", num_points=4096, test_area=5, transform=False):
         super().__init__()
@@ -228,7 +231,7 @@ class S3DISDataset(Dataset):
             room_filelist = [line.rstrip() for line in f]
 
         points, labels, train_indexs, test_indexs = [], [], [], []
-        for f in all_files:
+        for f in tqdm(all_files):
             file = h5py.File(os.path.join(DATA_PATH, f), 'r+')
             points.append(file["data"][:])
             labels.append(file["label"][:])

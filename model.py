@@ -333,7 +333,7 @@ class PointMLP(nn.Module):
         super(PointMLP, self).__init__()
         self.stages = len(pre_blocks)
         self.points = points
-        self.embedding = ConvBNReLU1D(6, embed_dim, bias=bias)
+        self.embedding = ConvBNReLU1D(9, embed_dim, bias=bias)
         assert len(pre_blocks) == len(k_neighbors) == len(reducers) == len(pos_blocks) == len(dim_expansion), \
             "Please check stage number consistent for pre_blocks, pos_blocks k_neighbors, reducers."
         self.local_grouper_list = nn.ModuleList()
