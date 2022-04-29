@@ -2,13 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import h5py
+import os
 import numpy as np
 import torch
-import os
 from torch.utils.data import Dataset
-from tqdm import tqdm
-from dataPrepare import dataPrepare
-
+import random
 
 class Compose(object):
     def __init__(self, transforms):
@@ -107,8 +106,8 @@ class ChromaticAutoContrast(object):
 
     def __call__(self, coord, feat, label):
         if np.random.rand() < self.p:
-            lo = np.min(feat, 0, keepdims=True)
-            hi = np.max(feat, 0, keepdims=True)
+            lo = np.min(feat[:, :3], 0, keepdims=True)
+            hi = np.max(feat[:, :3], 0, keepdims=True)
             scale = 255 / (hi - lo)
             contrast_feat = (feat[:, :3] - lo) * scale
             blend_factor = np.random.rand() if self.blend_factor is None else self.blend_factor
@@ -213,149 +212,61 @@ class RandomDropColor(object):
             # feat[:, :3] = 127.5
         return coord, feat, label
 
-
-
 class S3DISDataset(Dataset):
-    def __init__(self, split="train", data_folder="s3dis_data", num_points=4096, test_area=5, block_size=1.0, sample_rate=1.0, transform=False):
-        """
-        DataLoader
-        :param split: train or test
-        :param data_folder: 数据集路径
-        :param num_points: 每次采样的点数
-        :param test_area: 在第几个Area测试
-        :param block_size: 采样点的半径
-        :param sample_rate: 采样率
-        :param transform: 是否使用transform
-        """
-        super(S3DISDataset, self).__init__()
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # 本文件所在文件夹
-        DATA_PATH = os.path.join(BASE_DIR, "data", data_folder)
-        if not os.path.exists(DATA_PATH):
-            dataPrepare()
+    def __init__(self, split="train", data_path="data", num_points=4096, test_area=5, transform=False):
+        super().__init__()
         self.num_points = num_points
-        self.block_size = block_size
         self.transform = transform
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        DATA_PATH = os.path.join(BASE_DIR, data_path)
+        test_area = "Area_" + str(test_area)
 
-        # 根据split生成训练集房间列表或测试级房间列表
-        rooms = sorted(os.listdir(DATA_PATH))
-        if split == 'train':
-            rooms_split = [room for room in rooms if not 'Area_{}'.format(test_area) in room]
-        else:
-            rooms_split = [room for room in rooms if 'Area_{}'.format(test_area) in room]
+        with open(os.path.join(DATA_PATH, "indoor3d_sem_seg_hdf5_data", "all_files.txt")) as f:
+            all_files = [line.rstrip() for line in f]
 
-        # 每个房间点集列表、点标签列表，每个房间点数列表
-        self.room_points, self.room_labels = [], []
-        num_points_all = []
+        with open(os.path.join(DATA_PATH, "indoor3d_sem_seg_hdf5_data", "room_filelist.txt")) as f:
+            room_filelist = [line.rstrip() for line in f]
 
-        # 遍历每个房间
-        print("Loading %s data:" % split)
-        for room_name in tqdm(rooms_split, total=len(rooms_split)):
+        points, labels, train_indexs, test_indexs = [], [], [], []
+        for f in all_files:
+            file = h5py.File(os.path.join(DATA_PATH, f), 'r+')
+            points.append(file["data"][:])
+            labels.append(file["label"][:])
 
-            # 根据路径读取数据
-            room_path = os.path.join(DATA_PATH, room_name)
-            if not os.path.exists(room_path):
-                print(room_path + " not found!")
-                continue
-            room_data = np.load(room_path)  # xyzrgb l, N x 7
-            points = room_data[:, :6]  # xyz rgb, N x 6
-            labels = room_data[:, 6] # l, N x 1
+        points_list = np.concatenate(points, 0)
+        labels_list = np.concatenate(labels, 0)
 
-            # 将读取到的数据存入列表中
-            self.room_points.append(points)
-            self.room_labels.append(labels)
-            num_points_all.append(labels.size)
+        for i, room in enumerate(room_filelist):
+            test_indexs.append(i) if test_area in room else train_indexs.append(i)
 
-        # 每个房间被采样的概率, (1 x len(room_split), )
-        sample_prob = num_points_all / np.sum(num_points_all)
-
-        # 采样次数，即将所有点采一遍需要几次
-        num_iter = int(np.sum(num_points_all) * sample_rate / num_points)
-
-        # 按比例列出房间需要被采样的次数, for example: [0,0,1,1,1,2], 0房间2次，1房间3次，2房间1次
-        room_idxs = []
-        for index in range(len(rooms_split)):
-            room_idxs.extend([index] * int(round(sample_prob[index] * num_iter)))
-        self.room_idxs = np.array(room_idxs) # (1 x num_iter, )
-
-        print("Totally {} samples in {} set.".format(len(self.room_idxs), split))
+        self.points = points_list[train_indexs if split == "train" else test_indexs, ...]
+        self.labels = labels_list[train_indexs if split == "train" else test_indexs, ...]
 
     def __getitem__(self, index):
-        """
-        重写由下标访问数据方法
-        :param index: 房间下标, 0 ~ num_iter
-        :return: selected_points采样点, num_points x 6
-                 selected_labels采样点标签, num_points x 1
-        """
-        room_idx = self.room_idxs[index]
-        points = self.room_points[room_idx]  # N x 6
-        labels = self.room_labels[room_idx]  # N x 1
-        N_points = points.shape[0]
 
-        # 找一个在block_size范围内邻居数量多于1024的中心
-        while (True):
-            center = points[np.random.choice(N_points)][:3]
-            block_min = center - [self.block_size / 2.0, self.block_size / 2.0, self.block_size / 2.0]
-            block_max = center + [self.block_size / 2.0, self.block_size / 2.0, self.block_size / 2.0]
-            point_idxs = np.where((points[:, :3] >= block_min) & (points[:, :3] <= block_max))[0]
-            if point_idxs.size > 1024:
-                break
+        points = self.points[index][:self.num_points]
+        labels = self.labels[index][:self.num_points]
 
-        # 对block_size范围内的点取num_points个点
-        selected_point_idxs = np.random.choice(point_idxs, self.num_points, replace=(point_idxs.size < self.num_points))
+        transform_list = [ToTensor()] if not self.transform else \
+                         [RandomRotate(), RandomScale(), RandomShift(), RandomFlip(), RandomJitter(),ChromaticAutoContrast(),
+                          ChromaticTranslation(), ChromaticJitter(), HueSaturationTranslation(), RandomDropColor(), ToTensor()]
 
-        # 坐标归一化
-        points = points[selected_point_idxs, :]  # num_points x 6
-        labels = labels[selected_point_idxs]  # num_points x 1
-        points[:, 0:3] -= center
-        points[:, 3:6] /= 255.0
-
-
-        # 数据增强
-        if self.transform:
-            transform = Compose([RandomScale([0.9, 1.1]), ChromaticAutoContrast(), ChromaticTranslation(),
-                                 ChromaticJitter(), HueSaturationTranslation()])
-            points[:, :3], points[:, 3:6], labels = transform(points[:, :3], points[:, 3:6], labels)
-
-        # 转化为tensor
-        points = torch.from_numpy(points).float()
-        labels = torch.from_numpy(labels).long()
+        t = Compose(transform_list)
+        points[:, :3], points[:, 3:], labels = t(points[:, :3], points[:, 3:], labels)
 
         return points, labels
 
     def __len__(self):
-        """
-        :return: 采样次数, num_iter
-        """
-        return len(self.room_idxs)
+        return self.labels.shape[0]
 
 
 if __name__ == '__main__':
-    data_folder = 's3dis_data'
-    num_point, test_area, block_size, sample_rate = 4096, 5, 1.0, 1
-
-    point_data = S3DISDataset(split='train', data_folder=data_folder, num_points=num_point, test_area=test_area,
-                              block_size=block_size, sample_rate=sample_rate, transform=False)
-    print('point data size:', point_data.__len__())
-    print('point data 0 shape:', point_data.__getitem__(1)[0].shape)
-    print('point label 0 shape:', point_data.__getitem__(1)[1].shape)
-
-    import torch, time, random
-
+    train = S3DISDataset(transform=False)
     manual_seed = 42
-    random.seed(manual_seed)
-    np.random.seed(manual_seed)
-    torch.manual_seed(manual_seed)
-    torch.cuda.manual_seed_all(manual_seed)
-
-
     def worker_init_fn(worker_id):
         random.seed(manual_seed + worker_id)
-
-
-    train_loader = torch.utils.data.DataLoader(point_data, batch_size=3, shuffle=True, num_workers=0, pin_memory=True,
-                                               worker_init_fn=worker_init_fn)
-    for idx in range(4):
-        end = time.time()
-        for i, (input, target) in enumerate(train_loader):
-            print('time: {}/{}--{}'.format(i + 1, len(train_loader), time.time() - end))
-            end = time.time()
+    train_loader = torch.utils.data.DataLoader(train, batch_size=3, shuffle=True, num_workers=0,
+                                                   pin_memory=True,
+                                                   worker_init_fn=worker_init_fn)
+    for i, (input, target) in enumerate(train_loader):
+        print(i, input.shape, target.shape)

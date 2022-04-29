@@ -311,18 +311,20 @@ class PointNetFeaturePropagation(nn.Module):
         new_points = self.extraction(new_points)
 
         # TODO: generate the pred
-        pred = new_points
-        for i in range(len(self.prediction)):
-            pred = self.prediction[i](pred)
+        feat = new_points
+        for i in range(len(self.prediction) - 1):
+            feat = self.prediction[i](feat)
+
+        pred = self.prediction[-1](feat)
 
         # TODO: return the pred
-        return new_points, pred.permute(0, 2, 1)
+        return new_points, feat.permute(0, 2, 1), pred.permute(0, 2, 1)
 
 
 
 
 class PointMLP(nn.Module):
-    def __init__(self, num_classes=13,points=4096, embed_dim=64, groups=1, res_expansion=1.0,
+    def __init__(self, num_classes=13, points=1024, embed_dim=64, groups=1, res_expansion=1.0,
                  activation="relu", bias=True, use_xyz=True, normalize="anchor",
                  dim_expansion=[2, 2, 2, 2], pre_blocks=[2, 2, 2, 2], pos_blocks=[2, 2, 2, 2],
                  k_neighbors=[32, 32, 32, 32], reducers=[4, 4, 4, 4],
@@ -364,15 +366,9 @@ class PointMLP(nn.Module):
             en_dims.append(last_channel)
 
 
-        # TODO: build pred5
-        self.prediction = nn.Sequential(
-            ConvBNReLU1D(1024, 256),
-            nn.Dropout(0.5),
-            ConvBNReLU1D(256, 64),
-            nn.Dropout(0.5),
-            ConvBNReLU1D(64, 13),
-            nn.LogSoftmax(dim=1)
-        )
+        # TODO: build feat5 and pred5
+        self.feature = nn.Sequential(ConvBNReLU1D(1024, 256), nn.Dropout(), ConvBNReLU1D(256, 64), nn.Dropout(), ConvBNReLU1D(64, 32))
+        self.predict = nn.Sequential(nn.Dropout(), ConvBNReLU1D(32, 13), nn.LogSoftmax(dim=1))
 
         ### Building Decoder #####
         # self.decode_list = nn.ModuleList()
@@ -384,10 +380,10 @@ class PointMLP(nn.Module):
         #         PointNetFeaturePropagation(de_dims[i] + en_dims[i+1] + num_classes, de_dims[i+1],
         #                                    blocks=de_blocks[i], groups=groups, res_expansion=res_expansion,
         #                                    bias=bias, activation=activation))
-        self.fp4 = PointNetFeaturePropagation(de_dims[0] + en_dims[3] + num_classes, de_dims[1], de_blocks[0], mlp=[128, 32])
-        self.fp3 = PointNetFeaturePropagation(de_dims[1] + en_dims[2] + num_classes, de_dims[2], de_blocks[1], mlp=[64])
-        self.fp2 = PointNetFeaturePropagation(de_dims[2] + en_dims[1] + num_classes, de_dims[3], de_blocks[2], mlp=[32])
-        self.fp1 = PointNetFeaturePropagation(de_dims[3] + en_dims[0] + num_classes, de_dims[4], de_blocks[3], mlp=[32])
+        self.fp4 = PointNetFeaturePropagation(de_dims[0] + en_dims[3] + num_classes, de_dims[1], de_blocks[0], mlp=[256, 128, 64, 32])
+        self.fp3 = PointNetFeaturePropagation(de_dims[1] + en_dims[2] + num_classes, de_dims[2], de_blocks[1], mlp=[128, 64, 32])
+        self.fp2 = PointNetFeaturePropagation(de_dims[2] + en_dims[1] + num_classes, de_dims[3], de_blocks[2], mlp=[64, 32])
+        self.fp1 = PointNetFeaturePropagation(de_dims[3] + en_dims[0] + num_classes, de_dims[4], de_blocks[3], mlp=[64, 32])
 
 
         # global max pooling mapping
@@ -406,23 +402,23 @@ class PointMLP(nn.Module):
         )
 
     def forward(self, x):
-        xyz = x[:, 0:3, :].permute(0, 2, 1)
+        coord = x[:, 0:3, :].permute(0, 2, 1)
         # x = torch.cat([x,norm_plt],dim=1)
         x = self.embedding(x)  # B,D,N
 
-        xyz_list = [xyz]  # [B, N, 3]
+        coords = [coord]  # [B, N, 3]
         x_list = [x]  # [B, D, N]
-        fps_indexs = []
+        indexs = []
 
         # here is the encoder
         for i in range(self.stages):
             # Give xyz[b, p, 3] and fea[b, p, d], return new_xyz[b, g, 3] and new_fea[b, g, k, d]
-            xyz, x, fps_index = self.local_grouper_list[i](xyz, x.permute(0, 2, 1))  # [b,g,3]  [b,g,k,d]
+            coord, x, index = self.local_grouper_list[i](coord, x.permute(0, 2, 1))  # [b,g,3]  [b,g,k,d]
             x = self.pre_blocks_list[i](x)  # [b,d,g]
             x = self.pos_blocks_list[i](x)  # [b,d,g]
-            xyz_list.append(xyz)
+            coords.append(coord)
             x_list.append(x)
-            fps_indexs.append(fps_index)
+            indexs.append(index)
 
         # here is the decoder
         # xyz_list.reverse()
@@ -433,11 +429,16 @@ class PointMLP(nn.Module):
         #     x = self.decode_list[i](xyz_list[i+1], xyz_list[i], x_list[i+1], x)
 
         # TODO: decoder
-        pred5 = self.prediction(x5).permute(0, 2, 1) # [B, N/256, 13]
-        x4, pred4 = self.fp4(xyz_list[3], xyz_list[4], x_list[3], x5, pred5)  # [B, 512, N/64], [B, N/64, 13]
-        x3, pred3 = self.fp3(xyz_list[2], xyz_list[3], x_list[2], x4, pred4)  # [B, 256, N/16], [B, N/16, 13]
-        x2, pred2 = self.fp2(xyz_list[1], xyz_list[2], x_list[1], x3, pred3)  # [B, 128, N/4],  [B, N/4, 13]
-        x1, pred1 = self.fp1(xyz_list[0], xyz_list[1], x_list[0], x2, pred2)  # [B, 128, N],    [B, N, 13]
+        feat = self.feature(x5)
+        feat5 = feat.permute(0, 2, 1)
+        pred5 = self.predict(feat).permute(0, 2, 1) # [B, N/256, 13]
+        x4, feat4, pred4 = self.fp4(coords[3], coords[4], x_list[3], x5, pred5)  # [B, 512, N/64], [B, N/64, 13]
+        x3, feat3, pred3 = self.fp3(coords[2], coords[3], x_list[2], x4, pred4)  # [B, 256, N/16], [B, N/16, 13]
+        x2, feat2, pred2 = self.fp2(coords[1], coords[2], x_list[1], x3, pred3)  # [B, 128, N/4],  [B, N/4, 13]
+        x1, feat1, pred1 = self.fp1(coords[0], coords[1], x_list[0], x2, pred2)  # [B, 128, N],    [B, N, 13]
+
+        feats = [feat1, feat2, feat3, feat4, feat5]
+        preds = [pred1, pred2, pred3, pred4, pred5]
 
 
 
@@ -447,16 +448,16 @@ class PointMLP(nn.Module):
             gmp_list.append(F.adaptive_max_pool1d(self.gmp_map_list[i](x_list[i]), 1))
         global_context = self.gmp_map_end(torch.cat(gmp_list, dim=1)) # [b, gmp_dim, 1]
 
-        x = torch.cat([x1, global_context.repeat([1, 1, x1.shape[-1]])], dim=1)
-        x = self.classifier(x)
+        output = torch.cat([x1, global_context.repeat([1, 1, x1.shape[-1]])], dim=1)
+        output = self.classifier(output)
         # x = F.log_softmax(x, dim=1)
-        x = x.permute(0, 2, 1)
+        output = output.permute(0, 2, 1)
 
-        return x, xyz_list, [x1, x2, x3, x4, x5], [pred1, pred2, pred3, pred4, pred5], fps_indexs
+        return output, coords, feats, preds, indexs
 
 
 def pointMLP(num_classes=13, **kwargs) -> PointMLP:
-    return PointMLP(num_classes=num_classes, points=2048, embed_dim=64, groups=1, res_expansion=1.0,
+    return PointMLP(num_classes=num_classes, points=4096, embed_dim=64, groups=1, res_expansion=1.0,
                  activation="relu", bias=True, use_xyz=True, normalize="anchor",
                  dim_expansion=[2, 2, 2, 2], pre_blocks=[2, 2, 2, 2], pos_blocks=[2, 2, 2, 2],
                  k_neighbors=[32, 32, 32, 32], reducers=[4, 4, 4, 4],
@@ -465,17 +466,21 @@ def pointMLP(num_classes=13, **kwargs) -> PointMLP:
 
 
 if __name__ == '__main__':
-    data = torch.rand(2, 6, 2048)
+    data = torch.rand(2, 6, 1024)
     print("testing model ...")
     model = pointMLP()
     out, xyzs, xs, preds, indexs = model(data)  # [2,2048,13]
     print("model output:", out.shape)
+    print()
     for xyz in xyzs:
         print(xyz.shape)
+    print()
     for x in xs:
         print(x.shape)
+    print()
     for pred in preds:
         print(pred.shape)
+    print()
     for index in indexs:
         print(index.shape)
     print()

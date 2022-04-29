@@ -1,6 +1,6 @@
 from model import PointMLP
 from loss import Loss
-from dataLoader import S3DISDataset
+from data import S3DISDataset
 import torch
 import os
 from datetime import datetime
@@ -10,85 +10,85 @@ from sklearn.metrics import confusion_matrix
 import torch.nn.functional as F
 import argparse
 
-def stats_overall_accuracy(cm):
-    """
-    Compute the overall accuracy.
-    """
-    return np.trace(cm)/cm.sum()
+class Metrics():
+    def __init__(self):
+        pass
 
+    def stats_overall_accuracy(self, cm):
+        """
+        Compute the overall accuracy.
+        """
+        return np.trace(cm) / cm.sum()
 
-def stats_pfa_per_class(cm):
-    """
-    Compute the probability of false alarms.
-    """
-    sums = np.sum(cm, axis=0)
-    mask = (sums > 0)
-    sums[sums == 0] = 1
-    pfa_per_class = (cm.sum(axis=0)-np.diag(cm)) / sums
-    pfa_per_class[np.logical_not(mask)] = -1
-    average_pfa = pfa_per_class[mask].mean()
-    return average_pfa, pfa_per_class
+    def stats_pfa_per_class(self, cm):
+        """
+        Compute the probability of false alarms.
+        """
+        sums = np.sum(cm, axis=0)
+        mask = (sums > 0)
+        sums[sums == 0] = 1
+        pfa_per_class = (cm.sum(axis=0) - np.diag(cm)) / sums
+        pfa_per_class[np.logical_not(mask)] = -1
+        average_pfa = pfa_per_class[mask].mean()
+        return average_pfa, pfa_per_class
 
+    def stats_accuracy_per_class(self, cm):
+        """
+        Compute the accuracy per class and average
+        puts -1 for invalid values (division per 0)
+        returns average accuracy, accuracy per class
+        """
+        # equvalent to for class i to
+        # number or true positive of class i (data[target==i]==i).sum()/ number of elements of i (target==i).sum()
+        sums = np.sum(cm, axis=1)
+        mask = (sums > 0)
+        sums[sums == 0] = 1
+        accuracy_per_class = np.diag(cm) / sums  # sum over lines
+        accuracy_per_class[np.logical_not(mask)] = -1
+        average_accuracy = accuracy_per_class[mask].mean()
+        return average_accuracy, accuracy_per_class
 
-def stats_accuracy_per_class(cm):
-    """
-    Compute the accuracy per class and average
-    puts -1 for invalid values (division per 0)
-    returns average accuracy, accuracy per class
-    """
-    # equvalent to for class i to
-    # number or true positive of class i (data[target==i]==i).sum()/ number of elements of i (target==i).sum()
-    sums = np.sum(cm, axis=1)
-    mask = (sums>0)
-    sums[sums == 0] = 1
-    accuracy_per_class = np.diag(cm) / sums #sum over lines
-    accuracy_per_class[np.logical_not(mask)] = -1
-    average_accuracy = accuracy_per_class[mask].mean()
-    return average_accuracy, accuracy_per_class
+    def stats_iou_per_class(self, cm, ignore_missing_classes=True):
+        """
+        Compute the iou per class and average iou
+        Puts -1 for invalid values
+        returns average iou, iou per class
+        """
 
+        sums = (np.sum(cm, axis=1) + np.sum(cm, axis=0) - np.diag(cm))
+        mask = (sums > 0)
+        sums[sums == 0] = 1
+        iou_per_class = np.diag(cm) / sums
+        iou_per_class[np.logical_not(mask)] = -1
 
-def stats_iou_per_class(cm, ignore_missing_classes=True):
-    """
-    Compute the iou per class and average iou
-    Puts -1 for invalid values
-    returns average iou, iou per class
-    """
+        if mask.sum() > 0:
+            average_iou = iou_per_class[mask].mean()
+        else:
+            average_iou = 0
 
-    sums = (np.sum(cm, axis=1) + np.sum(cm, axis=0) - np.diag(cm))
-    mask = (sums>0)
-    sums[sums == 0] = 1
-    iou_per_class = np.diag(cm) / sums
-    iou_per_class[np.logical_not(mask)] = -1
+        return average_iou, iou_per_class
 
-    if mask.sum()>0:
-        average_iou = iou_per_class[mask].mean()
-    else:
-        average_iou = 0
-
-    return average_iou, iou_per_class
-
-
-def stats_f1score_per_class(cm):
-    """
-    Compute f1 scores per class and mean f1.
-    puts -1 for invalid classes
-    returns average f1 score, f1 score per class
-    """
-    # defined as 2 * recall * prec / recall + prec
-    sums = (np.sum(cm, axis=1) + np.sum(cm, axis=0))
-    mask = (sums > 0)
-    sums[sums == 0] = 1
-    f1score_per_class = 2 * np.diag(cm) / sums
-    f1score_per_class[np.logical_not(mask)] = -1
-    average_f1_score = f1score_per_class[mask].mean()
-    return average_f1_score, f1score_per_class
+    def stats_f1score_per_class(self, cm):
+        """
+        Compute f1 scores per class and mean f1.
+        puts -1 for invalid classes
+        returns average f1 score, f1 score per class
+        """
+        # defined as 2 * recall * prec / recall + prec
+        sums = (np.sum(cm, axis=1) + np.sum(cm, axis=0))
+        mask = (sums > 0)
+        sums[sums == 0] = 1
+        f1score_per_class = 2 * np.diag(cm) / sums
+        f1score_per_class[np.logical_not(mask)] = -1
+        average_f1_score = f1score_per_class[mask].mean()
+        return average_f1_score, f1score_per_class
 
 
 def train(args):
 
     # create the network
     print("Creating network at GPU " + str(args.gpu_id))
-    net = PointMLP()
+    net = PointMLP(points=args.num_points)
     net.cuda(args.gpu_id)
     net = torch.nn.DataParallel(net)
     if args.pretrain:
@@ -100,13 +100,11 @@ def train(args):
     # print("parameters", count_parameters(net))
 
     print("Creating dataloader and optimizer...")
-    train_data = S3DISDataset(split="train", data_folder=args.data_path, test_area=args.test_area,
-                              num_points=args.num_points, block_size=args.block_size, transform=args.transform)
-    train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True, num_workers=args.threads)
+    train = S3DISDataset(split="train", data_path=args.data_path, test_area=args.test_area, num_points=args.num_points, transform=args.transform)
+    train_loader = torch.utils.data.DataLoader(train, batch_size=args.batch_size, shuffle=True, num_workers=args.threads)
 
-    test_data = S3DISDataset(split="test", data_folder=args.data_path, test_area=args.test_area,
-                             num_points=args.num_points, block_size=args.block_size, transform=args.transform)
-    test_loader = torch.utils.data.DataLoader(test_data, batch_size=args.batch_size, shuffle=False, num_workers=args.threads)
+    test = S3DISDataset(split="test", data_path=args.data_path, test_area=args.test_area, num_points=args.num_points, transform=args.transform)
+    test_loader = torch.utils.data.DataLoader(test, batch_size=args.batch_size, shuffle=False, num_workers=args.threads)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.8)
@@ -159,9 +157,9 @@ def train(args):
             cm_ = confusion_matrix(target_np.ravel(), output_np.ravel(), labels=list(range(args.num_classes)))
             cm += cm_
 
-            oa = f"{stats_overall_accuracy(cm):.3f}"
-            aa = f"{stats_accuracy_per_class(cm)[0]:.3f}"
-            iou = f"{stats_iou_per_class(cm)[0]:.3f}"
+            oa = f"{Metrics.stats_overall_accuracy(cm):.3f}"
+            aa = f"{Metrics.stats_accuracy_per_class(cm)[0]:.3f}"
+            iou = f"{Metrics.stats_iou_per_class(cm)[0]:.3f}"
 
             train_loss += loss.detach().cpu().item()
 
@@ -190,9 +188,9 @@ def train(args):
                 cm_ = confusion_matrix(target_np.ravel(), output_np.ravel(), labels=list(range(args.num_classes)))
                 cm_test += cm_
 
-                oa_val = f"{stats_overall_accuracy(cm_test):.3f}"
-                aa_val = f"{stats_accuracy_per_class(cm_test)[0]:.3f}"
-                iou_val = f"{stats_iou_per_class(cm_test)[0]:.3f}"
+                oa_val = f"{Metrics.stats_overall_accuracy(cm_test):.3f}"
+                aa_val = f"{Metrics.stats_accuracy_per_class(cm_test)[0]:.3f}"
+                iou_val = f"{Metrics.stats_iou_per_class(cm_test)[0]:.3f}"
 
                 test_loss += loss.detach().cpu().item()
 
@@ -231,11 +229,10 @@ def test(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--save_dir",    default="results/",   type=str)
-    parser.add_argument("--data_path",   default='s3dis_data', type=str)
+    parser.add_argument("--data_path",   default="data",       type=str)
     parser.add_argument("--batch_size",  default=2,            type=int)
-    parser.add_argument("--num_points",  default=4096,         type=int)
+    parser.add_argument("--num_points",  default=2048,         type=int)
     parser.add_argument("--test_area",   default=5,            type=int)
-    parser.add_argument("--block_size",  default=1.0,          type=float)
     parser.add_argument("--threads",     default=1,            type=int)
     parser.add_argument("--pretrain",    default=False,        type=bool)
     parser.add_argument("--lr",          default=0.0001,       type=float)

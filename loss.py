@@ -9,48 +9,55 @@ class Loss(nn.Module):
         初始化
         """
         super(Loss, self).__init__()
-        self.nsamples = [36, 24, 24, 24, 24]
-        self.nstrides = [1, 4, 4, 4, 4]
+        self.nsamples = torch.tensor([36, 24, 24, 24, 24]).cuda()
+        self.nstrides = torch.tensor([1, 4, 4, 4, 4]).cuda()
         self.temperature = 1
 
-    def stats_boundary_loss(self, coords, feats, labels, num_classes):
+    def stats_boundary_loss(self, coords, labels, feats, num_classes):
         """
         边界损失函数 L_cbl
         :param coords: 5个stage中点的坐标
-        :param feats: 5个stage中点的特征
         :param labels: 标签groundtruth
+        :param feats: 5个stage中点的特征
         :return: loss
         """
-        loss = torch.tensor(.0)
+        loss = torch.tensor(.0).cuda()
         labels = F.one_hot(labels, num_classes)  # [B, N, 13]
         for i, (coord, feat) in enumerate(zip(coords, feats)):
 
             # 生成场景标签
             kneighbors = torch.prod(self.nstrides[:i + 1])  # K个邻居, 1, 4, 16, 64, 256
             neighbor_idx = knn_point(kneighbors, coords[0], coord)  # [B, S, K], S: number of coords[i]
-            labels = index_points(labels, neighbor_idx)  # [B, S, K, 13]
-            labels =labels.mean(dim=-2)  # [B, S, 13]
+            probability_labels = index_points(labels, neighbor_idx)  # [B, S, K, 13]
+            probability_labels = probability_labels.float().mean(dim=-2)  # [B, S, 13]
 
             # 对每个点选择nsample邻域
             nsample = self.nsamples[i]
-            neighbor_idx = knn_point(nsample, coord, coord)  # [B, S, nsample], S: number of coords[i]
+            neighbor_idx = knn_point(nsample, coords[0], coord)  # [B, S, nsample], S: number of coords[i]
+
 
             # 邻居数量-1, exclude self-loop
             nsample -= 1
             neighbor_idx = neighbor_idx[..., 1:].contiguous()  # 等效于neighbor_idx[:, :, 1:], [B, S, nsample-1]
-            neighbor_label = index_points(labels, neighbor_idx)  # [B, S, K, 13]
+            print(probability_labels.shape)
+            print(feat.shape)
+            print(neighbor_idx.shape)
+            neighbor_label = index_points(probability_labels, neighbor_idx)  # [B, S, K, 13]
+            print(neighbor_label.shape)
             neighbor_feat = index_points(feat, neighbor_idx)  # [B, S, K, C]
+            print(neighbor_feat.shape)
+            print()
 
             # 查找边界点
-            labels = torch.argmax(torch.unsqueeze(labels, -2), -1)  # [B, S, 1, 13] -> [B, S, 1]
+            center_labels = torch.argmax(torch.unsqueeze(probability_labels, -2), -1)  # [B, S, 1, 13] -> [B, S, 1]
             neighbor_label = torch.argmax(neighbor_label, -1)  # [B, S, K]
-            mask = labels == neighbor_label  # [B, S, K], bool
+            mask = center_labels == neighbor_label  # [B, S, K], bool
             point_mask = torch.sum(mask.int(), -1)  # [B, S], 每个点的邻居有多少是和自己标签相同的
             point_mask = (point_mask > 0) & (point_mask < nsample)  # [B, S], bool
 
-            # 没有边界点则直接返回
+            # 没有边界点则直接进入下一个stage
             if not torch.any(point_mask):
-                return torch.tensor(.0)  # 直接返回 loss = 0
+                continue
 
             # 获得边界点特征
             mask = mask[point_mask]  # [B, sub_S, K]
@@ -65,10 +72,10 @@ class Loss(nn.Module):
             dist = dist / self.temperature
             exp = torch.exp(dist)
 
-            pos = torch.sum(exp * mask, axis=-1)  # (m)
-            neg = torch.sum(exp, axis=-1)  # (m)
+            pos = torch.sum(exp * mask.float())
+            neg = torch.sum(exp)
 
-            loss = loss - torch.log(pos / neg + 1e-6)
+            loss = loss - torch.log(pos / (neg + 1e-6))
 
         return loss
 
@@ -108,7 +115,7 @@ class Loss(nn.Module):
         :return: loss
         """
         output_loss = F.cross_entropy(output.contiguous().view(-1, num_classes), labels.contiguous().view(-1))
-        boundary_loss = self.stats_boundary_loss(coords, feats, labels, num_classes)
+        boundary_loss = self.stats_boundary_loss(coords, labels, feats, num_classes)
         ordinary_loss = self.stats_ordinary_loss(labels, indexs, preds, num_classes)
 
         loss = output_loss + alpha * boundary_loss + beta * ordinary_loss
