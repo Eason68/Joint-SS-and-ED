@@ -8,6 +8,7 @@ root
  ├─ main.py
  ├─ model.py
  ├─ loss.py
+ ├─ metrics.py
  ├─ README.md
  └─ data
      └─ indoor3d_sem_seg_hdf5_data
@@ -44,6 +45,7 @@ The configuration items are shown in the following table:
 | `--num_classes`     | number of semantic categories, default `13`    | `int`   |
 | `--transform`       | whether data augmentation is needed            | `bool`  |
 | `--gpu_id`          | which GPU you need to use                      | `int`   |
+| `--in_channel`      | channel for input data                         | `int`   |
 
 
 

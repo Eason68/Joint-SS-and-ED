@@ -91,17 +91,19 @@ class Metrics():
         :return: 边界IoU
         """
         kneighbor = 32
+        coords = coords.permute(0, 2, 1)[..., :3]
         neighbor_indexs = knn_point(kneighbor, coords, coords)  # [B, N, K]
 
         # ground truth
-        neighbor_labels = index_points(labels.unsqueeze(dim=-1), neighbor_indexs).squeeze()  # [B, N]->[B, N, 1]->[B, N, K, 1]->[B, N, K]
+        labels = labels.unsqueeze(dim=-1)  # [B, N]->[B, N, 1]
+        neighbor_labels = index_points(labels, neighbor_indexs).squeeze()  # [B, N, 1]->[B, N, K, 1]->[B, N, K]
         mask_labels = labels == neighbor_labels  # [B, N, K], bool
         mask_labels = torch.sum(mask_labels.int(), dim=-1)  # [B, N]
         true_boundary = (mask_labels > 0) & (mask_labels < kneighbor)  # [B, N], bool
 
         # prediction
-        output = torch.argmax(output, dim=-1)  # [B, N, 13]->[B, N]
-        neighbor_output = index_points(output.unsqueeze(dim=-1), neighbor_indexs).squeeze()
+        output = torch.argmax(output, dim=-1).unsqueeze(dim=-1)  # [B, N, 13]->[B, N]->[B, N, 1]
+        neighbor_output = index_points(output, neighbor_indexs).squeeze()
         mask_output = output == neighbor_output
         mask_output = torch.sum(mask_output.int(), dim=-1)
         pred_boundary = (mask_output > 0) & (mask_output < kneighbor)

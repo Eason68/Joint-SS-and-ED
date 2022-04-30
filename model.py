@@ -323,17 +323,17 @@ class PointNetFeaturePropagation(nn.Module):
 
 
 
-class PointMLP(nn.Module):
-    def __init__(self, num_classes=13, points=1024, embed_dim=64, groups=1, res_expansion=1.0,
+class MyModel(nn.Module):
+    def __init__(self, num_classes=13, points=4096, in_channel=9, embed_dim=64, groups=1, res_expansion=1.0,
                  activation="relu", bias=True, use_xyz=True, normalize="anchor",
                  dim_expansion=[2, 2, 2, 2], pre_blocks=[2, 2, 2, 2], pos_blocks=[2, 2, 2, 2],
                  k_neighbors=[32, 32, 32, 32], reducers=[4, 4, 4, 4],
                  de_dims=[1024, 512, 256, 128, 128], de_blocks=[2, 2, 2, 2],
                  gmp_dim=64,cls_dim=64, **kwargs):
-        super(PointMLP, self).__init__()
+        super(MyModel, self).__init__()
         self.stages = len(pre_blocks)
         self.points = points
-        self.embedding = ConvBNReLU1D(9, embed_dim, bias=bias)
+        self.embedding = ConvBNReLU1D(in_channel, embed_dim, bias=bias)
         assert len(pre_blocks) == len(k_neighbors) == len(reducers) == len(pos_blocks) == len(dim_expansion), \
             "Please check stage number consistent for pre_blocks, pos_blocks k_neighbors, reducers."
         self.local_grouper_list = nn.ModuleList()
@@ -456,36 +456,31 @@ class PointMLP(nn.Module):
         return output, coords, feats, preds, indexs
 
 
-def pointMLP(num_classes=13, **kwargs) -> PointMLP:
-    return PointMLP(num_classes=num_classes, points=4096, embed_dim=64, groups=1, res_expansion=1.0,
-                 activation="relu", bias=True, use_xyz=True, normalize="anchor",
-                 dim_expansion=[2, 2, 2, 2], pre_blocks=[2, 2, 2, 2], pos_blocks=[2, 2, 2, 2],
-                 k_neighbors=[32, 32, 32, 32], reducers=[4, 4, 4, 4],
-                 de_dims=[1024, 512, 256, 128, 128], de_blocks=[4,4,4,4],
-                 gmp_dim=64,cls_dim=64, **kwargs)
-
-
-if __name__ == '__main__':
-    data = torch.rand(2, 6, 1024)
-    print("testing model ...")
-    model = pointMLP()
-    out, xyzs, xs, preds, indexs = model(data)  # [2,2048,13]
-    print("model output:", out.shape)
-    print()
-    for xyz in xyzs:
-        print(xyz.shape)
-    print()
-    for x in xs:
-        print(x.shape)
-    print()
-    for pred in preds:
-        print(pred.shape)
-    print()
-    for index in indexs:
-        print(index.shape)
-    print()
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # PyTorch v0.4.0
-    # model = PointMLP().to(device)
-    #
-    # for param_tensor in model.state_dict():
-    #     print(param_tensor, "\t", model.state_dict()[param_tensor].size())
+# def MyModel(num_classes=13, **kwargs) -> MyModel:
+#     return MyModel(num_classes=num_classes, points=4096, embed_dim=64, groups=1, res_expansion=1.0,
+#                  activation="relu", bias=True, use_xyz=True, normalize="anchor",
+#                  dim_expansion=[2, 2, 2, 2], pre_blocks=[2, 2, 2, 2], pos_blocks=[2, 2, 2, 2],
+#                  k_neighbors=[32, 32, 32, 32], reducers=[4, 4, 4, 4],
+#                  de_dims=[1024, 512, 256, 128, 128], de_blocks=[4,4,4,4],
+#                  gmp_dim=64,cls_dim=64, **kwargs)
+#
+#
+# if __name__ == '__main__':
+#     data = torch.rand(2, 6, 1024)
+#     print("testing model ...")
+#     model = MyModel()
+#     out, xyzs, xs, preds, indexs = model(data)  # [2,2048,13]
+#     print("model output:", out.shape)
+#     print()
+#     for xyz in xyzs:
+#         print(xyz.shape)
+#     print()
+#     for x in xs:
+#         print(x.shape)
+#     print()
+#     for pred in preds:
+#         print(pred.shape)
+#     print()
+#     for index in indexs:
+#         print(index.shape)
+#     print()
