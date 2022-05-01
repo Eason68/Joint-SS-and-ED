@@ -1,21 +1,21 @@
 import numpy as np
 import torch
-from model import knn_point, index_points
+from utils import knn_point, index_points
 
 
 class Metrics():
     def __init__(self):
         pass
 
-    @classmethod
-    def stats_overall_accuracy(self, cm):
+    @staticmethod
+    def stats_overall_accuracy(cm):
         """
         Compute the overall accuracy.
         """
         return np.trace(cm) / cm.sum()
 
-    @classmethod
-    def stats_pfa_per_class(self, cm):
+    @staticmethod
+    def stats_pfa_per_class(cm):
         """
         Compute the probability of false alarms.
         """
@@ -27,8 +27,8 @@ class Metrics():
         average_pfa = pfa_per_class[mask].mean()
         return average_pfa, pfa_per_class
 
-    @classmethod
-    def stats_accuracy_per_class(self, cm):
+    @staticmethod
+    def stats_accuracy_per_class(cm):
         """
         Compute the accuracy per class and average
         puts -1 for invalid values (division per 0)
@@ -44,8 +44,8 @@ class Metrics():
         average_accuracy = accuracy_per_class[mask].mean()
         return average_accuracy, accuracy_per_class
 
-    @classmethod
-    def stats_iou_per_class(self, cm, ignore_missing_classes=True):
+    @staticmethod
+    def stats_iou_per_class(cm):
         """
         Compute the iou per class and average iou
         Puts -1 for invalid values
@@ -65,8 +65,8 @@ class Metrics():
 
         return average_iou, iou_per_class
 
-    @classmethod
-    def stats_f1score_per_class(self, cm):
+    @staticmethod
+    def stats_f1score_per_class(cm):
         """
         Compute f1 scores per class and mean f1.
         puts -1 for invalid classes
@@ -81,20 +81,20 @@ class Metrics():
         average_f1_score = f1score_per_class[mask].mean()
         return average_f1_score, f1score_per_class
 
-    @classmethod
-    def stats_boundary_iou(self, coords, labels, output):
+    @staticmethod
+    def stats_boundary_iou(coords, labels, output):
         """
         计算边界IoU
         :param coords: 原始点的坐标
         :param labels: 原始点的标签
         :param output: 预测点的标签
-        :return: 边界IoU
+        :return: boundary_IoU
         """
         kneighbor = 32
         coords = coords.permute(0, 2, 1)[..., :3]
         neighbor_indexs = knn_point(kneighbor, coords, coords)  # [B, N, K]
 
-        # ground truth
+        # groundtruth
         labels = labels.unsqueeze(dim=-1)  # [B, N]->[B, N, 1]
         neighbor_labels = index_points(labels, neighbor_indexs).squeeze()  # [B, N, 1]->[B, N, K, 1]->[B, N, K]
         mask_labels = labels == neighbor_labels  # [B, N, K], bool
@@ -108,9 +108,9 @@ class Metrics():
         mask_output = torch.sum(mask_output.int(), dim=-1)
         pred_boundary = (mask_output > 0) & (mask_output < kneighbor)
 
-        # calc the IoU
+        # calculate the boundary IoU
         boundary_I = true_boundary & pred_boundary
         boundary_U = true_boundary | pred_boundary
-        boundary_IoU = torch.sum(boundary_I.int()) / torch.sum(boundary_U.int())
+        boundary_IoU = torch.sum(boundary_I.int()).float() / torch.sum(boundary_U.int()).float()
 
         return boundary_IoU

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from model import knn_point, index_points
+from utils import knn_point, index_points
 
 class Loss(nn.Module):
     def __init__(self):
@@ -10,7 +10,7 @@ class Loss(nn.Module):
         """
         super(Loss, self).__init__()
         self.nsamples = [64, 32, 16, 8, 4]
-        self.temperature = 1
+        self.temperature = 1.0
 
     def stats_boundary_loss(self, coords, labels, feats, num_classes):
         """
@@ -62,8 +62,8 @@ class Loss(nn.Module):
             dist = - dist
             dist = dist - torch.max(dist, -1, keepdim=True)[0]
             dist = dist / self.temperature
-            exp = torch.exp(dist)  # [B, sub_S, K]
 
+            exp = torch.exp(dist)  # [B, sub_S, K]
             pos = torch.sum(exp * mask.float())
             neg = torch.sum(exp)
 
@@ -92,7 +92,7 @@ class Loss(nn.Module):
         loss = loss1 + loss2 + loss3 + loss4 + loss5
         return loss
 
-    def forward(self, labels, indexs, output, preds, coords, feats, num_classes=13, alpha=0.1, beta=0.1):
+    def forward(self, labels, indexs, output, preds, coords, feats, num_classes=13, alpha=0.05, beta=0.05):
         """
         :param labels: 输入的标签, B x N x 1
         :param indexs: 每次FPS下采样所采点的集合, [index2, index3, index4, index5]

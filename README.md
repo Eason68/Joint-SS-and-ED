@@ -1,3 +1,16 @@
+## Framework
+
+![framework](./image/framework.png)
+
+## environment
+
+Switch to the current directory in the terminal and execute the following command to install the environment dependency:
+
+```bash
+# please remember to switch to the current directory
+pip install -r requirements.txt
+```
+
 ## Data
 
 Create a new folder in the current directory and name it `data` , then download `indoor3d_sem_seg_hdf5_data`  [here](https://shapenet.cs.stanford.edu/media/indoor3d_sem_seg_hdf5_data.zip) and unzip it and place it under `data` , the file structure is as follows:
@@ -24,7 +37,7 @@ root
 Switch to the current directory on the terminal and execute `main.py` , and you can add the configuration items you want to add later
 
 ```bash
-cd ./
+# please remember to switch to the current directory
 python main.py
 ```
 
