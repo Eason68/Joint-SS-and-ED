@@ -2,14 +2,23 @@
 
 ![framework](./image/framework.png)
 
-## environment
 
-Switch to the current directory in the terminal and execute the following command to install the environment dependency:
+
+## Environment
+
+Our network is tested in the following environments:
+
+* CUDA == 10.0
+* cuDNN == 7.6.5
+
+And then you need to switch to the current directory in the terminal and execute the following command to install the environment dependency:
 
 ```bash
 # please remember to switch to the current directory
 pip install -r requirements.txt
 ```
+
+
 
 ## Data
 
@@ -22,12 +31,16 @@ root
  ├─ model.py
  ├─ loss.py
  ├─ metrics.py
+ ├─ utils.py
+ ├─ requirements.txt
  ├─ README.md
- └─ data
-     └─ indoor3d_sem_seg_hdf5_data
-         ├─ all_files.txt
-         ├─ ply_data_all_i.h5 (i = 0, 1, ... , 23)
-         └─ room_filelist.txt
+ ├─ data
+ │   └─ indoor3d_sem_seg_hdf5_data
+ │       ├─ all_files.txt
+ │       ├─ ply_data_all_i.h5 (i = 0, 1, ... , 23)
+ │       └─ room_filelist.txt
+ └─ image
+     └─ framework.png
 ```
 
 
