@@ -4,7 +4,7 @@ from __future__ import print_function
 
 from model import MyModel
 from loss import Loss
-from dataLoader import S3DISDataset
+from data import S3DISDataset
 import torch
 import os
 from datetime import datetime
@@ -216,8 +216,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--save_dir",    default="results/",   type=str)
     parser.add_argument("--data_path",   default="data",       type=str)
-    parser.add_argument("--batch_size",  default=2,            type=int)
-    parser.add_argument("--num_points",  default=2048,         type=int)
+    parser.add_argument("--batch_size",  default=8,            type=int)
+    parser.add_argument("--num_points",  default=4096,         type=int)
     parser.add_argument("--test_area",   default=5,            type=int)
     parser.add_argument("--threads",     default=1,            type=int)
     parser.add_argument("--pretrain",    default=False,        type=bool)
@@ -228,7 +228,7 @@ def main():
     parser.add_argument("--num_classes", default=13,           type=int)
     parser.add_argument("--transform",   default=False,        type=bool)
     parser.add_argument("--gpu_id",      default=0,            type=int)
-    parser.add_argument("--in_channel",  default=6,            type=int)
+    parser.add_argument("--in_channel",  default=9,            type=int)
     parser.add_argument("--eval",        default=True,         type=bool)
     parser.add_argument("--test",        default=False,        type=bool)
     args = parser.parse_args()
