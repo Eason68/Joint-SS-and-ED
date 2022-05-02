@@ -23,7 +23,7 @@ def train(args):
 
     net = MyModel(points=args.num_points, in_channel=args.in_channel)
     net.to(device)
-    net = torch.nn.DataParallel(net)
+    net = torch.nn.DataParallel(net, device_ids=[args.gpu_id])
     if args.pretrain:
         net.load_state_dict(torch.load(os.path.join(args.save_dir, "pretrain.pth")))
 
@@ -64,7 +64,7 @@ def train(args):
         train_biou = 0
         train_loss = 0
 
-        t = tqdm(enumerate(train_loader), ncols=100, desc="Train {}".format(epoch))
+        t = tqdm(enumerate(train_loader), desc="Train {}".format(epoch))
         for i, (points, labels) in t:
 
             points = points.permute(0, 2, 1)
@@ -91,8 +91,8 @@ def train(args):
             train_biou += Metrics.stats_boundary_iou(points, labels, output)
             train_loss += loss.detach().cpu().item()
 
-            t.set_postfix(IOU=LogColor.wblue(iou), BIoU=LogColor.wblue(f"{train_biou / (i + 1):.3f}"),
-                          LOSS=LogColor.wblue(f"{train_loss / cm.sum():.3e}"))
+            t.set_postfix(IOU=LogColor.blue(iou), BIoU=LogColor.blue(f"{train_biou / (i + 1):.3f}"),
+                          LOSS=LogColor.blue(f"{train_loss / cm.sum():.3e}"))
 
         if optimizer.param_groups[0]['lr'] > 0.9e-5:
             scheduler.step()
@@ -106,7 +106,7 @@ def train(args):
         test_biou = 0
         test_loss = 0
 
-        t = tqdm(enumerate(test_loader), ncols=100, desc="Test {}".format(epoch))
+        t = tqdm(enumerate(test_loader), ncols=150, desc="Test {}".format(epoch))
         with torch.no_grad():
             for i, (points, labels) in t:
 
@@ -130,8 +130,8 @@ def train(args):
                 test_biou += Metrics.stats_boundary_iou(points, labels, output)
                 test_loss += loss.detach().cpu().item()
 
-                t.set_postfix(IOU=LogColor.wgreen(iou_val), BIoU=LogColor.wgreen(f"{test_biou / (i + 1):.3f}"),
-                              LOSS=LogColor.wgreen(f"{test_loss / cm_test.sum():.3e}"))
+                t.set_postfix(IOU=LogColor.green(iou_val), BIoU=LogColor.green(f"{test_biou / (i + 1):.3f}"),
+                              LOSS=LogColor.green(f"{test_loss / cm_test.sum():.3e}"))
 
         # save the model
         torch.save(net.state_dict(), os.path.join(root_folder, "state_dict.pth"))
@@ -182,7 +182,7 @@ def test(args):
     test_biou = 0
     test_loss = 0
 
-    t = tqdm(enumerate(test_loader), ncols=100, desc="Test")
+    t = tqdm(enumerate(test_loader), ncols=150, desc="Test")
     with torch.no_grad():
         for i, (points, labels) in t:
             points = points.permute(0, 2, 1)
@@ -208,7 +208,7 @@ def test(args):
             t.set_postfix(IOU=iou_val, BIoU=f"{test_biou / (i + 1):.3f}", LOSS=f"{test_loss / cm_test.sum():.3e}")
 
     # write the logs
-    logs.write(f"{epoch} OA: {oa} IoU: {iou} B-IoU: {train_biou} OA: {oa_val} IoU: {iou_val} B-IoU: {test_biou}\n")
+    logs.write(f"OA: {oa_val} IoU: {iou_val} B-IoU: {test_biou}\n")
     logs.close()
 
 

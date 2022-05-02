@@ -84,33 +84,33 @@ class Metrics():
     @staticmethod
     def stats_boundary_iou(coords, labels, output):
         """
-        计算边界IoU
-        :param coords: 原始点的坐标
-        :param labels: 原始点的标签
-        :param output: 预测点的标签
-        :return: boundary_IoU
+        Compute the IoU at the boundary
+        :param coords: coordinates of the original point
+        :param labels: labels of the original point
+        :param output: the final output of the model, i.e. the labels of the predicted points
+        :return: the IoU at the boundary: boundary_IoU
         """
         kneighbor = 32
         coords = coords.permute(0, 2, 1)[..., :3]
         neighbor_indexs = knn_point(kneighbor, coords, coords)  # [B, N, K]
 
-        # groundtruth
+        # Groundtruth
         labels = labels.unsqueeze(dim=-1)  # [B, N]->[B, N, 1]
         neighbor_labels = index_points(labels, neighbor_indexs).squeeze()  # [B, N, 1]->[B, N, K, 1]->[B, N, K]
         mask_labels = labels == neighbor_labels  # [B, N, K], bool
         mask_labels = torch.sum(mask_labels.int(), dim=-1)  # [B, N]
         true_boundary = (mask_labels > 0) & (mask_labels < kneighbor)  # [B, N], bool
 
-        # prediction
+        # Prediction
         output = torch.argmax(output, dim=-1).unsqueeze(dim=-1)  # [B, N, 13]->[B, N]->[B, N, 1]
         neighbor_output = index_points(output, neighbor_indexs).squeeze()
         mask_output = output == neighbor_output
         mask_output = torch.sum(mask_output.int(), dim=-1)
         pred_boundary = (mask_output > 0) & (mask_output < kneighbor)
 
-        # calculate the boundary IoU
+        # Calculate the boundary IoU
         boundary_I = true_boundary & pred_boundary
         boundary_U = true_boundary | pred_boundary
-        boundary_IoU = torch.sum(boundary_I.int()).float() / torch.sum(boundary_U.int()).float()
+        boundary_IoU = torch.sum(boundary_I.int()).float() / (torch.sum(boundary_U.int()).float() + 1e-6)
 
         return boundary_IoU

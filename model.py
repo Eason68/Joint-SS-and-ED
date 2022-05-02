@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils import farthest_point_sample, knn_point, index_points, square_distance
 
-
 class LocalGrouper(nn.Module):
     def __init__(self, channel, groups, kneighbors, use_xyz=True, normalize="anchor", **kwargs):
         """
@@ -24,8 +23,8 @@ class LocalGrouper(nn.Module):
             print(f"Unrecognized normalize parameter (self.normalize), set to None. Should be one of [center, anchor].")
             self.normalize = None
         if self.normalize is not None:
-            add_channel=3 if self.use_xyz else 0
-            self.affine_alpha = nn.Parameter(torch.ones([1, 1, 1,channel + add_channel]))
+            add_channel = 3 if self.use_xyz else 0
+            self.affine_alpha = nn.Parameter(torch.ones([1, 1, 1, channel + add_channel]))
             self.affine_beta = nn.Parameter(torch.zeros([1, 1, 1, channel + add_channel]))
 
     def forward(self, xyz, points):

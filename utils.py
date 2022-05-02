@@ -103,24 +103,52 @@ def knn_point(nsample, xyz, new_xyz):
 
 
 def count_parameters(model):
+    """
+    Calculate the number of parameters of the model
+    :param model:
+    :return:
+    """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 class LogColor:
+    """
+    Control terminal display color
+    """
 
-    HEADER    = '\033[95m'
-    OKBLUE    = '\033[94m'
-    OKGREEN   = '\033[92m'
-    WARNING   = '\033[93m'
-    FAIL      = '\033[91m'
-    ENDC      = '\033[0m'
-    BOLD      = '\033[1m'
-    UNDERLINE = '\033[4m'
+    END    = '\033[0m'
+    RED    = '\033[91m'
+    GREEN  = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE   = '\033[94m'
+    PURPLE = '\033[95m'
+    CYAN   = '\033[96m'
+    WHITE  = '\033[97m'
 
     @staticmethod
-    def wblue(str=None):
-        return LogColor.OKBLUE + str + LogColor.ENDC
+    def red(string):
+        return LogColor.RED + string + LogColor.END
 
     @staticmethod
-    def wgreen(str=None):
-        return LogColor.OKGREEN + str + LogColor.ENDC
+    def green(string):
+        return LogColor.GREEN + string + LogColor.END
+
+    @staticmethod
+    def yellow(string):
+        return LogColor.YELLOW + string + LogColor.END
+
+    @staticmethod
+    def blue(string):
+        return LogColor.BLUE + string + LogColor.END
+
+    @staticmethod
+    def purple(string):
+        return LogColor.PURPLE + string + LogColor.END
+
+    @staticmethod
+    def cyan(string):
+        return LogColor.CYAN + string + LogColor.END
+
+    @staticmethod
+    def white(string):
+        return LogColor.WHITE + string + LogColor.END

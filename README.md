@@ -8,8 +8,8 @@
 
 Our network is tested in the following environments:
 
-* CUDA == 10.0
-* cuDNN == 7.6.5
+* CUDA 10.0
+* cuDNN 7.6.5
 
 And then you need to switch to the current directory in the terminal and execute the following command to install the environment dependency:
 
@@ -65,6 +65,7 @@ The configuration items are shown in the following table:
 | `--test_area`       | test area, default `5`                         | `int`   |
 | `--threads`         | number of threads during training              | `int`   |
 | `--pretrain`        | whether to load the pre-trained model          | `bool`  |
+| `--optimizer`       | optimiser for iterations during model training | `str`   |
 | `--lr`              | learning rate, default `0.0001`                | `float` |
 | `--epochs`          | training rounds                                | `int`   |
 | `--model`           | model name                                     | `str`   |
@@ -72,6 +73,8 @@ The configuration items are shown in the following table:
 | `--transform`       | whether data augmentation is needed            | `bool`  |
 | `--gpu_id`          | which GPU you need to use                      | `int`   |
 | `--in_channel`      | channel for input data                         | `int`   |
+| `--eval`            | whether need to validate during training       | `bool`  |
+| `--test`            | to test or not to test(train)                  | `bool`  |
 
 
 
